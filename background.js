@@ -35,6 +35,38 @@ let bgState = {
   popupPorts:  [],     // all connected popups
 };
 
+// ─── TEXT CLEANING (mirror of popup.js & offscreen.js) ──────────────────────
+const FILLERS = /^(um+|uh+|er+|hmm+|ah+|like\s|so\s|okay\s|ok\s|well\s|right\s|yeah\s|hey\s|please\s+)?/i;
+const FIXES = {
+  'scroll':     ['scrawl','stroll','squall'],
+  'click':      ['cclick','kclick','klick'],
+  'submit':     ['some it','summit','sub-mit'],
+  'search':     ['surge','church','lurch'],
+  'youtube':    ['you tube','your tube',"you're tube",'utube'],
+  'github':     ['get hub','git hub','get up'],
+  'google':     ['goggle','googol'],
+  'refresh':    ['re fresh','refreshed'],
+  'download':   ['down load'],
+  'fullscreen': ['full scream','for screen'],
+};
+
+function cleanText(raw) {
+  let t = raw.trim();
+  t = t.replace(FILLERS, '').trim();
+  // Snapshot the original text in lowercase before applying corrections
+  const original = t.toLowerCase();
+  for (const [correct, wrongs] of Object.entries(FIXES)) {
+    for (const wrong of wrongs) {
+      // Check against snapshot, replace with word boundary to avoid substring corruption
+      if (original.includes(wrong)) {
+        t = t.replace(new RegExp(`\\b${wrong}\\b`, 'gi'), correct);
+      }
+    }
+  }
+  t = t.replace(/^(?:hey\s+)?(?:speak\s*path|speakpad|navigate\s+to|computer|ok\s+google)[,\s]+/i, '').trim();
+  return t.replace(/\s+/g, ' ').trim();
+}
+
 // ─── SETTINGS ─────────────────────────────────────────────────────────────────
 async function getSettings() {
   if (bgState.settings) return bgState.settings;
@@ -99,7 +131,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   // ── AI Navigation ──────────────────────────────────────────────────────────
   if (msg.type === 'AI_NAVIGATE') {
-    route(msg.command, msg.uiString, msg.apiKey, msg.apiEndpoint)
+    const cleanedCmd = cleanText(msg.command);
+    route(cleanedCmd, msg.uiString, msg.apiKey, msg.apiEndpoint)
       .then(r  => sendResponse({ success: true, result: r }))
       .catch(e => sendResponse({ success: false, error: e.message }));
     return true;
@@ -166,7 +199,8 @@ async function processTranscript(text, conf) {
 }
 
 async function executeCommandFromBackground(command, settings) {
-  broadcastToPopups({ type: 'COMMAND_PROCESSING', command });
+  const cleanedCmd = cleanText(command);
+  broadcastToPopups({ type: 'COMMAND_PROCESSING', command: cleanedCmd });
 
   // Get active tab
   let tabs;
@@ -177,14 +211,14 @@ async function executeCommandFromBackground(command, settings) {
   const tab = tabs[0];
   if (!tab || !tab.url || /^(chrome|chrome-extension|edge|about|data):/.test(tab.url)) {
     const err = 'Navigate to a real website first';
-    broadcastToPopups({ type: 'COMMAND_RESULT', success: false, error: err, command });
+    broadcastToPopups({ type: 'COMMAND_RESULT', success: false, error: err, command: cleanedCmd });
     await speakViaAudio(err, settings.openaiKey);
     bgState.triggered = false;
     return;
   }
 
   // ── AI Content Commands (no UI needed) ────────────────────────────────────
-  const contentCmd = detectContentCommand(command);
+  const contentCmd = detectContentCommand(cleanedCmd);
   if (contentCmd) {
     broadcastToPopups({ type: 'CONTENT_CMD_START', command: contentCmd.type });
     const ctx = await getPageContext(tab.id, contentCmd);
@@ -202,10 +236,10 @@ async function executeCommandFromBackground(command, settings) {
     // Try local first
     let local;
     try {
-      local = await chrome.tabs.sendMessage(tab.id, { type: 'LOCAL_MATCH', command });
+      local = await chrome.tabs.sendMessage(tab.id, { type: 'LOCAL_MATCH', command: cleanedCmd });
     } catch(e) {
       await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
-      local = await chrome.tabs.sendMessage(tab.id, { type: 'LOCAL_MATCH', command });
+      local = await chrome.tabs.sendMessage(tab.id, { type: 'LOCAL_MATCH', command: cleanedCmd });
     }
 
     if (local?.builtin) {
@@ -251,11 +285,11 @@ async function executeCommandFromBackground(command, settings) {
       return;
     }
 
-    const aiResult = await route(command, uiData.uiString, settings.apiKey, settings.apiEndpoint);
+    const aiResult = await route(cleanedCmd, uiData.uiString, settings.apiKey, settings.apiEndpoint);
 
     if (aiResult.action === 'none' || (aiResult.confidence < (settings.confidenceThreshold || 0.65))) {
       const err = 'Could not find matching element';
-      broadcastToPopups({ type: 'COMMAND_RESULT', success: false, error: err, command, tier: aiResult.tier });
+      broadcastToPopups({ type: 'COMMAND_RESULT', success: false, error: err, command: cleanedCmd, tier: aiResult.tier });
       await speakViaAudio(err, settings.openaiKey);
       bgState.triggered = false;
       return;
@@ -264,7 +298,7 @@ async function executeCommandFromBackground(command, settings) {
     if (aiResult.action === 'keypress') {
       const kr = await chrome.tabs.sendMessage(tab.id, { type: 'EXECUTE_KEYPRESS', key: aiResult.key });
       const msg = `Pressed ${aiResult.key}`;
-      broadcastToPopups({ type: 'COMMAND_RESULT', success: true, message: msg, tier: aiResult.tier, command });
+      broadcastToPopups({ type: 'COMMAND_RESULT', success: true, message: msg, tier: aiResult.tier, command: cleanedCmd });
       await speakViaAudio(msg, settings.openaiKey);
       bgState.triggered = false;
       return;
@@ -274,16 +308,16 @@ async function executeCommandFromBackground(command, settings) {
     const tierLabel = { fast:'Minimax', standard:'Gemini', haiku:'Haiku', fallback:'AI' }[aiResult.tier] || 'AI';
     if (cr.success) {
       const msg = `Clicked ${cr.text}`;
-      broadcastToPopups({ type: 'COMMAND_RESULT', success: true, message: msg, tier: aiResult.tier, command });
+      broadcastToPopups({ type: 'COMMAND_RESULT', success: true, message: msg, tier: aiResult.tier, command: cleanedCmd });
       await speakViaAudio(msg, settings.openaiKey);
     } else {
       const err = `Click failed: ${cr.error}`;
-      broadcastToPopups({ type: 'COMMAND_RESULT', success: false, error: err, tier: aiResult.tier, command });
+      broadcastToPopups({ type: 'COMMAND_RESULT', success: false, error: err, tier: aiResult.tier, command: cleanedCmd });
       await speakViaAudio('Click failed', settings.openaiKey);
     }
   } catch(e) {
     const err = `Error: ${e.message}`;
-    broadcastToPopups({ type: 'COMMAND_RESULT', success: false, error: err, command });
+    broadcastToPopups({ type: 'COMMAND_RESULT', success: false, error: err, command: cleanedCmd });
     await speakViaAudio('Something went wrong', settings.openaiKey);
   }
 
@@ -596,7 +630,29 @@ async function route(command,uiString,apiKey,endpoint){
 }
 
 async function testConnection(apiKey,endpoint){
-  try{const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:EP.MINIMAX,max_tokens:5,temperature:0,messages:[{role:'user',content:'hi'}]})});
-  if(r.status===401)return{ok:false,msg:ERRS.KEY};if(r.status===403)return{ok:false,msg:ERRS.FORBIDDEN};if(r.status===404)return{ok:false,msg:ERRS.NOT_FOUND};if(r.status===429)return{ok:true,msg:'✓ Connected (rate limited but key works)'};if(!r.ok){const b=await r.text().catch(()=>'');return{ok:false,msg:`API ${r.status}: ${b.slice(0,80)}`};}return{ok:true,msg:'✓ Connected! Minimax → Gemini → Haiku ready.'};}
-  catch(e){return{ok:false,msg:ERRS[diagnoseError(e,endpoint)]||`Failed: ${e.message}`};}
+  try{
+    // Test with actual route function to verify AI tier progression (skip local matching)
+    const testCmd = 'hello world';
+    const testUI = 'Button: Home|Link: About|Input: Search';
+    const result = await route(testCmd, testUI, apiKey, endpoint);
+    if (result.tier) {
+      return{ok:true,msg:`✓ Connected! AI tier: ${result.tier}. Minimax → Gemini → Haiku ready.`};
+    }
+    return{ok:true,msg:'✓ Connected! AI routing active.'};
+  }
+  catch(e){
+    // Fallback: direct API test
+    try{
+      const r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:EP.MINIMAX,max_tokens:5,temperature:0,messages:[{role:'user',content:'hi'}]})});
+      if(r.status===401)return{ok:false,msg:'🔑 API key rejected.'};
+      if(r.status===403)return{ok:false,msg:'🚫 Access forbidden.'};
+      if(r.status===404)return{ok:false,msg:'🔍 Endpoint 404.'};
+      if(r.status===429)return{ok:true,msg:'✓ Connected (rate limited but key works)'};
+      if(!r.ok){const b=await r.text().catch(()=>'');return{ok:false,msg:`API ${r.status}: ${b.slice(0,80)}`};}
+      return{ok:true,msg:'✓ Connected! Minimax → Gemini → Haiku ready.'};
+    }
+    catch(e2){
+      return{ok:false,msg:ERRS[diagnoseError(e,endpoint)]||`Failed: ${e.message}`.slice(0,100)};
+    }
+  }
 }

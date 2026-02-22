@@ -28,8 +28,8 @@ let settings       = {
 };
 
 const FIXES = {
-  'scroll':     ['scrawl','crawl','stroll','squall'],
-  'click':      ['lick','flick','brick','thick','cclick'],
+  'scroll':     ['scrawl','stroll','squall'],
+  'click':      ['cclick','kclick','klick'],
   'submit':     ['some it','summit','sub-mit'],
   'search':     ['surge','church','lurch'],
   'youtube':    ['you tube','your tube',"you're tube",'utube'],
@@ -351,10 +351,14 @@ function syncMicUI() {
 function cleanText(raw) {
   let t = raw.trim();
   t = t.replace(FILLERS, '').trim();
-  const lower = t.toLowerCase();
+  // Snapshot the original text in lowercase before applying corrections
+  const original = t.toLowerCase();
   for (const [correct, wrongs] of Object.entries(FIXES)) {
     for (const wrong of wrongs) {
-      if (lower.includes(wrong)) t = t.replace(new RegExp(wrong, 'gi'), correct);
+      // Check against snapshot, replace with word boundary to avoid substring corruption
+      if (original.includes(wrong)) {
+        t = t.replace(new RegExp(`\\b${wrong}\\b`, 'gi'), correct);
+      }
     }
   }
   t = t.replace(/^(?:hey\s+)?(?:speak\s*path|speakpad|navigate\s+to|computer|ok\s+google)[,\s]+/i, '').trim();
