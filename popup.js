@@ -92,7 +92,7 @@ function handleBgMessage(msg) {
       break;
 
     case 'COMMAND_RESULT': {
-      const tl = { fast:'DOUBAO', standard:'GEMINI', haiku:'HAIKU', fallback:'AI' }[msg.tier] || 'LOCAL';
+      const tl = { fast:'MINIMAX', standard:'GEMINI', haiku:'HAIKU', fallback:'AI' }[msg.tier] || 'LOCAL';
       $('lastTier').textContent = tl;
       if (msg.success) {
         stats.actions++;
