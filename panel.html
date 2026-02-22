@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Voxium</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07070f;--s1:#0e0e1c;--border:#1a1a2e;
+  --g:#00ff9d;--warn:#f59e0b;--err:#ff4466;--ok:#10b981;
+  --tx:#e8edf2;--muted:#4b5563;
+}
+html,body{width:280px;height:100%;background:var(--bg);color:var(--tx);font-family:'IBM Plex Mono',monospace;overflow:hidden;user-select:none;}
+
+/* drag handle */
+.drag{height:24px;background:linear-gradient(90deg,rgba(0,255,157,0.06),rgba(14,165,233,0.04));border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 10px;cursor:move;-webkit-app-region:drag;}
+.drag-title{font-size:9px;letter-spacing:0.18em;color:var(--muted);text-transform:uppercase;}
+.drag-btns{display:flex;gap:4px;-webkit-app-region:no-drag;}
+.drag-btn{width:20px;height:16px;border:1px solid var(--border);border-radius:3px;background:var(--s1);cursor:pointer;font-size:9px;color:var(--muted);display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
+.drag-btn:hover{border-color:var(--g);color:var(--g);}
+.drag-btn.close:hover{border-color:var(--err);color:var(--err);}
+
+/* status bar */
+.sbar{height:20px;display:flex;align-items:center;gap:6px;padding:0 10px;border-bottom:1px solid var(--border);background:rgba(0,255,157,0.03);}
+.dot{width:5px;height:5px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:all 0.3s;}
+.dot.on{background:var(--g);box-shadow:0 0 5px var(--g);}
+.dot.wait{background:var(--warn);box-shadow:0 0 5px var(--warn);animation:blink 0.7s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+#sbarTxt{font-size:8px;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;}
+
+/* mic row */
+.mic-row{display:flex;align-items:center;gap:10px;padding:10px 12px;}
+.mic-btn{width:44px;height:44px;border-radius:50%;border:1.5px solid rgba(0,255,157,0.25);background:rgba(0,255,157,0.05);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;transition:all 0.2s;flex-shrink:0;}
+.mic-btn:hover{border-color:var(--g);box-shadow:0 0 14px rgba(0,255,157,0.2);}
+.mic-btn.armed{border-color:var(--g);background:rgba(0,255,157,0.1);box-shadow:0 0 0 0 rgba(0,255,157,0.3);animation:mpulse 2s ease-in-out infinite;}
+.mic-btn.heard{border-color:var(--warn);background:rgba(245,158,11,0.1);box-shadow:0 0 18px rgba(245,158,11,0.3);}
+@keyframes mpulse{0%{box-shadow:0 0 0 0 rgba(0,255,157,0.3)}50%{box-shadow:0 0 0 8px rgba(0,255,157,0)}100%{box-shadow:0 0 0 0 rgba(0,255,157,0)}}
+.mic-info{flex:1;min-width:0;}
+.mic-lbl{font-size:8px;letter-spacing:0.12em;color:var(--muted);text-transform:uppercase;}
+.mic-lbl.on{color:var(--g);}
+.trigger-badge{display:inline-block;margin-top:3px;font-size:9px;color:var(--g);border:1px solid rgba(0,255,157,0.3);border-radius:3px;padding:1px 5px;letter-spacing:0.08em;}
+
+/* waveform */
+.wave-wrap{margin:0 12px 8px;height:32px;border-radius:6px;overflow:hidden;border:1px solid var(--border);background:#050508;position:relative;}
+canvas#wave{width:100%;height:32px;display:block;}
+.wave-lbl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:8px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;pointer-events:none;}
+.wave-lbl.hidden{opacity:0;}
+
+/* transcript */
+.tx-wrap{margin:0 12px 8px;background:rgba(0,255,157,0.03);border:1px solid var(--border);border-radius:6px;padding:6px 8px;min-height:28px;font-size:10px;line-height:1.5;transition:all 0.2s;}
+.tx-wrap.active{border-color:rgba(0,255,157,0.3);}
+.tx-wrap.triggered{border-color:rgba(124,58,237,0.5);background:rgba(124,58,237,0.05);}
+.tx-ph{color:var(--muted);font-style:italic;font-size:9px;}
+#txText{color:var(--g);}
+#txInterim{color:var(--muted);font-style:italic;}
+
+/* output */
+.out{margin:0 12px 8px;padding:6px 8px;border-radius:6px;font-size:10px;line-height:1.5;display:none;border:1px solid var(--border);}
+.out.show{display:block;}
+.out.ok{background:rgba(16,185,129,0.06);border-color:rgba(16,185,129,0.25);color:var(--ok);}
+.out.err{background:rgba(255,68,102,0.06);border-color:rgba(255,68,102,0.2);color:var(--err);}
+.out.thinking{background:rgba(0,255,157,0.03);border-color:rgba(0,255,157,0.15);color:var(--muted);}
+.out.local{background:rgba(14,165,233,0.06);border-color:rgba(14,165,233,0.25);color:#7dd3fc;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{display:inline-block;animation:spin 1s linear infinite;}
+
+/* type input */
+.type-row{display:flex;gap:5px;margin:0 12px 8px;}
+#typeInput{flex:1;background:var(--s1);border:1px solid var(--border);border-radius:5px;padding:5px 7px;font-size:9px;color:var(--tx);font-family:inherit;outline:none;min-width:0;}
+#typeInput:focus{border-color:rgba(0,255,157,0.4);}
+#goBtn{background:rgba(0,255,157,0.08);border:1px solid rgba(0,255,157,0.3);border-radius:5px;padding:5px 8px;color:var(--g);font-size:9px;font-family:inherit;cursor:pointer;letter-spacing:0.1em;white-space:nowrap;}
+#goBtn:hover{background:rgba(0,255,157,0.15);}
+
+/* quick cmds */
+.qc-row{display:flex;flex-wrap:wrap;gap:4px;margin:0 12px 8px;}
+.qc{font-size:8px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;letter-spacing:0.06em;background:var(--s1);transition:all 0.15s;}
+.qc:hover{border-color:var(--g);color:var(--g);}
+
+/* footer */
+.footer{display:flex;align-items:center;justify-content:space-between;padding:5px 12px 8px;border-top:1px solid var(--border);}
+.footer-txt{font-size:7px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;}
+#lastTier{font-size:7px;color:var(--muted);letter-spacing:0.08em;}
+
+/* settings panel */
+#settingsPanel{display:none;position:absolute;inset:24px 0 0 0;background:var(--bg);z-index:100;overflow-y:auto;padding:10px 12px;}
+#settingsPanel.open{display:block;}
+.sf{margin-bottom:10px;}
+.sf label{font-size:8px;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;display:block;margin-bottom:3px;}
+.sf input,.sf select{width:100%;background:var(--s1);border:1px solid var(--border);border-radius:4px;padding:5px 7px;font-size:9px;color:var(--tx);font-family:inherit;outline:none;}
+.sf input:focus,.sf select:focus{border-color:rgba(0,255,157,0.4);}
+.sf .hint{font-size:7px;color:var(--muted);margin-top:2px;line-height:1.4;}
+.s-save{width:100%;margin-top:6px;background:rgba(0,255,157,0.1);border:1px solid rgba(0,255,157,0.4);border-radius:5px;padding:7px;font-family:inherit;font-size:9px;letter-spacing:0.12em;color:var(--g);cursor:pointer;}
+.s-save:hover{background:rgba(0,255,157,0.18);}
+</style>
+</head>
+<body>
+
+<!-- drag bar -->
+<div class="drag">
+  <span class="drag-title">⚡ SPEAKPATH</span>
+  <div class="drag-btns">
+    <div class="drag-btn" id="settingsBtn" title="Settings">⚙</div>
+    <div class="drag-btn close" id="closeBtn" title="Close">✕</div>
+  </div>
+</div>
+
+<!-- status bar -->
+<div class="sbar">
+  <div class="dot" id="dot"></div>
+  <span id="sbarTxt">IDLE — CLICK MIC</span>
+</div>
+
+<!-- mic row -->
+<div class="mic-row">
+  <button class="mic-btn" id="micBtn"><span class="mic-ico">🎙</span></button>
+  <div class="mic-info">
+    <div class="mic-lbl" id="micLbl">CLICK TO START</div>
+    <div class="trigger-badge">SAY "<span id="twDisplay">TEST</span>"</div>
+  </div>
+</div>
+
+<!-- waveform -->
+<div class="wave-wrap">
+  <canvas id="wave" width="256" height="32"></canvas>
+  <div class="wave-lbl" id="waveLbl">WAITING…</div>
+</div>
+
+<!-- transcript -->
+<div class="tx-wrap" id="txWrap">
+  <span class="tx-ph" id="txPh">transcript appears here</span>
+  <span id="txText" style="display:none"></span>
+  <span id="txInterim" style="display:none;color:var(--muted);font-style:italic;font-size:9px"></span>
+</div>
+
+<!-- output -->
+<div class="out" id="outBox"></div>
+
+<!-- type row -->
+<div class="type-row">
+  <input id="typeInput" placeholder="or type a command…" autocomplete="off" spellcheck="false"/>
+  <button id="goBtn">GO</button>
+</div>
+
+<!-- quick commands -->
+<div class="qc-row">
+  <div class="qc" data-cmd="summarize">📋 sum</div>
+  <div class="qc" data-cmd="explain">💡 explain</div>
+  <div class="qc" data-cmd="fact check">✅ check</div>
+  <div class="qc" data-cmd="read this">🔊 read</div>
+  <div class="qc" data-cmd="bullet points">• bullets</div>
+  <div class="qc" data-cmd="translate to spanish">🌍 es</div>
+</div>
+
+<!-- footer -->
+<div class="footer">
+  <span class="footer-txt" id="lastTier">—</span>
+  <span class="footer-txt">SPEAKPATH v3</span>
+</div>
+
+<!-- settings overlay -->
+<div id="settingsPanel">
+  <div class="sf">
+    <label>Comet API Key</label>
+    <input type="password" id="s_apiKey" placeholder="sk-…"/>
+  </div>
+  <div class="sf">
+    <label>OpenAI Key (TTS + AI)</label>
+    <input type="password" id="s_openaiKey" placeholder="sk-…"/>
+    <div class="hint">For voice responses &amp; summarize/explain</div>
+  </div>
+  <div class="sf">
+    <label>API Endpoint</label>
+    <input type="text" id="s_endpoint" placeholder="https://api.cometapi.com/v1/chat/completions"/>
+  </div>
+  <div class="sf">
+    <label>Trigger Word</label>
+    <input type="text" id="s_trigger" placeholder="test"/>
+  </div>
+  <div class="sf">
+    <label>Stop Phrase</label>
+    <input type="text" id="s_stop" placeholder="stop listening"/>
+    <div class="hint">Say this to disarm mic</div>
+  </div>
+  <div class="sf">
+    <label>Confidence</label>
+    <select id="s_conf">
+      <option value="0.5">50% — Try anything</option>
+      <option value="0.65" selected>65% — Balanced</option>
+      <option value="0.8">80% — Cautious</option>
+    </select>
+  </div>
+  <div class="sf">
+    <label>Language</label>
+    <select id="s_lang">
+      <option value="en-US">English (US)</option>
+      <option value="en-GB">English (UK)</option>
+      <option value="es-ES">Spanish</option>
+      <option value="fr-FR">French</option>
+      <option value="de-DE">German</option>
+      <option value="ja-JP">Japanese</option>
+      <option value="zh-CN">Chinese</option>
+    </select>
+  </div>
+  <button class="s-save" id="s_save">SAVE SETTINGS</button>
+</div>
+
+<script src="panel.js"></script>
+</body>
+</html>

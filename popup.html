@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Voxium</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#050508;--bg2:#0a0a12;--s1:#0f0f1a;--s2:#141425;--border:#1e1e35;
+  --g:#00ff9d;--g2:#7c3aed;--g3:#0ea5e9;--g4:#ff006e;
+  --tx:#f0f4f8;--muted:#6b7280;
+  --err:#ff4466;--warn:#f59e0b;--ok:#10b981;
+}
+body{width:420px;background:linear-gradient(135deg, var(--bg) 0%, var(--bg2) 100%);color:var(--tx);font-family:'IBM Plex Sans',sans-serif;font-weight:300;overflow:hidden;position:relative;max-height:100vh;}
+
+/* scan-line texture */
+body::after{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.05) 2px,rgba(0,0,0,0.05) 4px);pointer-events:none;z-index:999;opacity:0.5;}
+
+/* ─── HEADER ─── */
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(0,255,157,0.1);background:linear-gradient(135deg, rgba(15,15,26,0.8) 0%, rgba(20,20,37,0.6) 100%);backdrop-filter:blur(10px);}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand-dot{width:10px;height:10px;border-radius:50%;background:var(--g);box-shadow:0 0 12px var(--g),0 0 24px rgba(0,255,157,0.4);animation:blink 2.5s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.4}}
+.brand-name{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;letter-spacing:0.15em;color:var(--tx);background:linear-gradient(90deg, var(--g), var(--g3));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.brand-ver{font-size:10px;color:var(--g3);letter-spacing:0.08em;margin-left:2px;font-weight:600;}
+.brand-status{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);margin-left:auto;margin-right:10px;}
+.hdr-btns{display:flex;gap:6px;}
+.hdr-btn{width:32px;height:32px;background:linear-gradient(135deg, var(--s2), var(--s1));border:1px solid rgba(124,58,237,0.3);border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--muted);transition:all 0.2s;position:relative;}
+.hdr-btn:hover{border-color:var(--g);color:var(--g);box-shadow:0 0 12px rgba(0,255,157,0.2);}
+.hdr-btn.on{border-color:var(--g);color:var(--g);background:linear-gradient(135deg, rgba(0,255,157,0.1), rgba(14,165,233,0.08));}
+.hdr-btn.on::after{content:'';position:absolute;top:-4px;right:-4px;width:8px;height:8px;background:var(--g);border-radius:50%;border:2px solid var(--bg);box-shadow:0 0 6px var(--g);animation:pulse 2s ease-in-out infinite;}
+@keyframes pulse{0%{box-shadow:0 0 6px var(--g)}50%{box-shadow:0 0 12px var(--g)}}
+
+/* ─── VIEW SYSTEM ─── */
+.view{display:none;}.view.active{display:block;}
+
+/* ─── STATUS BAR ─── */
+.sbar{display:flex;align-items:center;gap:8px;padding:7px 18px;background:linear-gradient(90deg, rgba(0,255,157,0.08), rgba(14,165,233,0.06));border-bottom:1px solid rgba(0,255,157,0.15);font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);}
+.sbar-mode{display:flex;align-items:center;gap:5px;}
+.sbar-dot{width:6px;height:6px;border-radius:50%;background:var(--muted);}
+.sbar-dot.active{background:var(--g);box-shadow:0 0 6px var(--g);}
+.sbar-dot.waiting{background:var(--warn);box-shadow:0 0 6px var(--warn);animation:blink 0.8s ease-in-out infinite;}
+.sbar-sep{color:rgba(124,58,237,0.3);margin:0 3px;}
+#sbarText{color:var(--tx);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:uppercase;font-size:9px;letter-spacing:0.08em;}
+
+/* ─── MIC ZONE ─── */
+.mic-zone{padding:24px 18px 0;display:flex;flex-direction:column;align-items:center;gap:14px;}
+
+/* waveform canvas */
+.wave-wrap{position:relative;width:100%;height:60px;border-radius:10px;overflow:hidden;background:linear-gradient(135deg, rgba(0,255,157,0.05), rgba(14,165,233,0.04));border:1.5px solid rgba(0,255,157,0.2);box-shadow:inset 0 0 10px rgba(0,255,157,0.05);}
+canvas#wave{width:100%;height:60px;display:block;}
+.wave-trigger-label{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:0.12em;pointer-events:none;transition:opacity 0.3s;text-transform:uppercase;}
+.wave-trigger-label.hidden{opacity:0;}
+
+/* big mic button */
+.mic-outer{position:relative;display:flex;align-items:center;justify-content:center;}
+.mic-ring{position:absolute;inset:-16px;border-radius:50%;border:1.5px solid rgba(0,255,157,0.15);pointer-events:none;transition:all 0.4s;}
+.mic-ring2{position:absolute;inset:-32px;border-radius:50%;border:1.5px solid rgba(0,255,157,0.07);pointer-events:none;transition:all 0.4s;}
+.mic-btn{width:80px;height:80px;border-radius:50%;border:2px solid rgba(0,255,157,0.3);background:linear-gradient(135deg, rgba(0,255,157,0.08), rgba(14,165,233,0.05));cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.25s;position:relative;z-index:1;box-shadow:0 0 20px rgba(0,255,157,0.1);}
+.mic-btn:hover{border-color:var(--g);box-shadow:0 0 30px rgba(0,255,157,0.25);}
+.mic-btn.armed{border-color:var(--g);background:linear-gradient(135deg, rgba(0,255,157,0.12), rgba(14,165,233,0.08));box-shadow:0 0 0 0 rgba(0,255,157,0.4),inset 0 0 20px rgba(0,255,157,0.1);animation:arm-pulse 2s ease-in-out infinite;}
+.mic-btn.heard{border-color:var(--g);background:linear-gradient(135deg, rgba(0,255,157,0.18), rgba(14,165,233,0.12));box-shadow:0 0 40px rgba(0,255,157,0.4),inset 0 0 20px rgba(0,255,157,0.15);}
+@keyframes arm-pulse{0%{box-shadow:0 0 0 0 rgba(0,255,157,0.3),inset 0 0 20px rgba(0,255,157,0.1)}50%{box-shadow:0 0 0 12px rgba(0,255,157,0),inset 0 0 20px rgba(0,255,157,0.1)}}
+.mic-ico{font-size:28px;line-height:1;}
+
+.mic-status-row{display:flex;align-items:center;gap:12px;}
+.mic-lbl{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.11em;color:var(--muted);text-transform:uppercase;font-weight:600;}
+.mic-lbl.armed{color:var(--g);}
+.mic-lbl.heard{color:var(--warn);}
+.trigger-hint{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);border:1px solid rgba(124,58,237,0.4);border-radius:5px;padding:4px 8px;background:rgba(124,58,237,0.05);}
+.trigger-hint span{color:var(--g);font-weight:700;}
+
+/* ─── TRANSCRIPT ─── */
+.tx-box{margin:14px 18px 0;min-height:48px;background:linear-gradient(135deg, rgba(0,255,157,0.03), rgba(14,165,233,0.02));border:1px solid rgba(0,255,157,0.15);border-radius:10px;padding:11px 14px;font-size:13px;line-height:1.6;transition:all 0.2s;position:relative;}
+.tx-box.active{border-color:rgba(0,255,157,0.4);background:linear-gradient(135deg, rgba(0,255,157,0.06), rgba(14,165,233,0.04));box-shadow:inset 0 0 10px rgba(0,255,157,0.08);}
+.tx-box.triggered{border-color:rgba(124,58,237,0.6);background:linear-gradient(135deg, rgba(124,58,237,0.08), rgba(124,58,237,0.04));box-shadow:inset 0 0 10px rgba(124,58,237,0.08);}
+.tx-ph{color:var(--muted);font-size:12px;font-style:italic;}
+#txText{color:var(--g);}
+#txInterim{color:var(--muted);font-style:italic;}
+.tx-tag{position:absolute;top:-9px;right:12px;background:linear-gradient(135deg, var(--bg2), var(--bg));padding:0 8px;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--g3);letter-spacing:0.1em;font-weight:600;}
+
+/* ─── COMMAND INPUT ─── */
+.cmd-row{margin:12px 18px 0;display:flex;gap:6px;}
+.cmd-input{flex:1;background:linear-gradient(135deg, rgba(0,255,157,0.03), transparent);border:1px solid rgba(124,58,237,0.3);border-radius:8px;padding:10px 12px;color:var(--tx);font-family:'IBM Plex Mono',monospace;font-size:12px;outline:none;transition:all 0.15s;}
+.cmd-input:focus{border-color:var(--g2);background:linear-gradient(135deg, rgba(124,58,237,0.1), rgba(124,58,237,0.04));box-shadow:inset 0 0 10px rgba(124,58,237,0.1);}
+.cmd-input::placeholder{color:var(--muted);}
+.cmd-go{background:linear-gradient(135deg, var(--g), #00dd8f);border:none;border-radius:8px;padding:10px 16px;color:var(--bg);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;transition:all 0.2s;letter-spacing:0.08em;box-shadow:0 4px 12px rgba(0,255,157,0.25);}
+.cmd-go:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,255,157,0.35);opacity:0.9;}
+
+/* ─── STATUS OUTPUT ─── */
+.out-box{margin:12px 18px 0;padding:11px 14px;border-radius:10px;font-size:12px;line-height:1.6;display:none;border:1px solid var(--border);background:linear-gradient(135deg, var(--s2), var(--s1));}
+.out-box.show{display:block;}
+.out-box.ok{border-color:rgba(0,255,157,0.35);background:linear-gradient(135deg, rgba(0,255,157,0.08), rgba(0,255,157,0.04));}
+.out-box.err{border-color:rgba(255,68,102,0.35);background:linear-gradient(135deg, rgba(255,68,102,0.08), rgba(255,68,102,0.04));color:var(--err);}
+.out-box.thinking{border-color:rgba(14,165,233,0.35);background:linear-gradient(135deg, rgba(14,165,233,0.08), rgba(14,165,233,0.04));}
+.out-box.local{border-color:rgba(0,255,157,0.2);color:var(--g);}
+.spin{display:inline-block;animation:spin 0.7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ─── STATS BAR ─── */
+.stats{display:flex;margin:12px 18px 0;border:1px solid rgba(124,58,237,0.3);border-radius:10px;overflow:hidden;background:linear-gradient(135deg, rgba(0,255,157,0.04), rgba(14,165,233,0.03));}
+.stat{flex:1;padding:10px 0;text-align:center;border-right:1px solid rgba(124,58,237,0.2);}
+.stat:last-child{border-right:none;}
+.stat-n{font-family:'IBM Plex Mono',monospace;font-size:16px;font-weight:700;background:linear-gradient(90deg, var(--g), var(--g3));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.stat-l{font-size:9px;color:var(--muted);letter-spacing:0.08em;margin-top:2px;text-transform:uppercase;}
+
+/* ─── HISTORY CHIPS ─── */
+.hist-row{margin:12px 18px 0;display:flex;gap:6px;flex-wrap:wrap;}
+.hist-chip{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);border:1px solid var(--border);border-radius:4px;padding:2px 7px;cursor:pointer;transition:all 0.15s;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.hist-chip:hover{border-color:var(--g);color:var(--g);}
+
+/* ─── BANNERS ─── */
+.banner{margin:10px 16px 0;padding:10px 12px;border-radius:8px;font-size:11px;line-height:1.6;border:1px solid;}
+.banner.warn{border-color:rgba(245,158,11,0.3);background:rgba(245,158,11,0.06);color:var(--warn);cursor:pointer;}
+.banner.info{border-color:rgba(0,255,157,0.2);background:rgba(0,255,157,0.04);color:var(--g);}
+.banner.err{border-color:rgba(255,68,102,0.25);background:rgba(255,68,102,0.05);color:var(--err);}
+.banner-steps{list-style:none;margin-top:6px;}
+.banner-steps li{display:flex;gap:7px;margin-bottom:3px;}
+.step-n{font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;color:var(--g);background:rgba(0,255,157,0.1);border-radius:3px;width:16px;height:16px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;}
+.perm-btn{margin-top:10px;width:100%;background:var(--g);border:none;border-radius:6px;padding:8px;color:var(--bg);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.06em;}
+
+/* ─── FOOTER ─── */
+.footer{padding:10px 16px 14px;display:flex;align-items:center;justify-content:space-between;}
+.footer-txt{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:0.06em;}
+.footer-tier{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--muted);border:1px solid var(--border);border-radius:3px;padding:1px 5px;}
+
+/* ─── SETTINGS ─── */
+.sv{padding:14px 16px;}
+.sv h2{font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:700;letter-spacing:0.1em;color:var(--tx);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.sv h2::after{content:'';flex:1;height:1px;background:var(--border);}
+.field{margin-bottom:12px;}
+.field label{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:0.08em;margin-bottom:5px;text-transform:uppercase;}
+.field input,.field select{width:100%;background:var(--s1);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--tx);font-family:'IBM Plex Mono',monospace;font-size:12px;outline:none;transition:border-color 0.15s;}
+.field input:focus,.field select:focus{border-color:var(--g2);}
+.field .hint{font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5;}
+.field .hint code{color:var(--g);font-family:'IBM Plex Mono',monospace;}
+.sv-btns{display:flex;flex-direction:column;gap:6px;margin-top:4px;}
+.btn-save{background:var(--g);border:none;border-radius:6px;padding:10px;color:var(--bg);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.08em;}
+.btn-test{background:transparent;border:1px solid var(--g2);border-radius:6px;padding:9px;color:var(--g2);font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:0.08em;}
+.btn-test:hover{background:rgba(124,58,237,0.1);}
+.btn-back{background:transparent;border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;}
+.btn-back:hover{border-color:var(--g);color:var(--g);}
+.test-result{margin-top:8px;padding:8px 10px;border-radius:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1.5;border:1px solid;display:none;}
+.test-result.ok{border-color:rgba(0,255,157,0.3);color:var(--g);background:rgba(0,255,157,0.05);}
+.test-result.err{border-color:rgba(255,68,102,0.3);color:var(--err);background:rgba(255,68,102,0.05);}
+
+/* trigger word setting */
+.trigger-preview{display:inline-flex;align-items:center;gap:5px;margin-top:6px;padding:4px 10px;border:1px solid rgba(0,255,157,0.3);border-radius:4px;background:rgba(0,255,157,0.05);}
+.trigger-preview .tw{font-family:'IBM Plex Mono',monospace;font-weight:700;color:var(--g);font-size:12px;letter-spacing:0.1em;}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="brand">
+    <div class="brand-dot"></div>
+    <span class="brand-name">SPEAKPATH</span>
+    <span class="brand-ver">v3</span>
+  </div>
+  <div class="hdr-btns">
+    <button class="hdr-btn" id="forceAIBtn" title="Force AI mode">🤖</button>
+    <button class="hdr-btn" id="settingsBtn" title="Settings">⚙</button>
+  </div>
+</div>
+
+<!-- MAIN VIEW -->
+<div class="view active" id="mainView">
+
+  <!-- status bar -->
+  <div class="sbar">
+    <div class="sbar-mode">
+      <div class="sbar-dot" id="sbarDot"></div>
+      <span id="sbarText">IDLE — CLICK MIC TO ARM</span>
+    </div>
+  </div>
+
+  <!-- banners -->
+  <div id="noKeyBanner" class="banner warn" style="display:none">⚠ No API key — click to open Settings</div>
+  <div id="micPermBanner" class="banner info" style="display:none">
+    <div style="display:flex;gap:10px;align-items:flex-start;">
+      <span id="micPermIcon" style="font-size:18px;flex-shrink:0">🎙</span>
+      <div>
+        <div id="micPermTitle" style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:700;letter-spacing:0.08em;margin-bottom:4px;"></div>
+        <div id="micPermBody" style="font-size:11px;line-height:1.6;"></div>
+      </div>
+    </div>
+    <button class="perm-btn" id="micPermBtn" style="display:none">ENABLE MIC</button>
+  </div>
+
+  <!-- waveform -->
+  <div class="mic-zone">
+    <div class="wave-wrap">
+      <canvas id="wave" height="56"></canvas>
+      <div class="wave-trigger-label" id="waveLbl">SAY "<span style="color:var(--g);font-weight:700" id="triggerWordDisplay">TEST</span>" TO ACTIVATE · <span id="stopPhraseDisplay" style="color:var(--muted)">"stop listening"</span> TO STOP</div>
+    </div>
+
+    <!-- mic button -->
+    <div class="mic-outer">
+      <div class="mic-ring"></div>
+      <div class="mic-ring2"></div>
+      <button class="mic-btn" id="micBtn">
+        <span class="mic-ico">🎙</span>
+      </button>
+    </div>
+
+    <div class="mic-status-row">
+      <div class="mic-lbl" id="micLbl">CLICK TO START LISTENING</div>
+      <div class="trigger-hint">say <span id="triggerHint">TEST</span> → command</div>
+    </div>
+  </div>
+
+  <!-- transcript -->
+  <div class="tx-box" id="txBox">
+    <div class="tx-tag">TRANSCRIPT</div>
+    <span class="tx-ph" id="txPh">Listening for trigger word…</span>
+    <span id="txText" style="display:none"></span>
+    <span id="txInterim" style="display:none;color:var(--muted);font-style:italic;margin-left:4px"></span>
+  </div>
+
+  <!-- command input -->
+  <div class="cmd-row">
+    <input class="cmd-input" id="typeInput" placeholder="or type command + enter…" autocomplete="off"/>
+    <button class="cmd-go" id="goBtn">RUN</button>
+  </div>
+
+  <!-- output -->
+  <div class="out-box" id="outBox"></div>
+
+  <!-- history chips -->
+  <div class="hist-row" id="histRow"></div>
+
+  <!-- stats -->
+  <div class="stats">
+    <div class="stat"><div class="stat-n" id="statActions">0</div><div class="stat-l">TOTAL</div></div>
+    <div class="stat"><div class="stat-n" id="statLocal">0</div><div class="stat-l">LOCAL</div></div>
+    <div class="stat"><div class="stat-n" id="statAI">0</div><div class="stat-l">AI</div></div>
+    <div class="stat"><div class="stat-n" id="statSaved">0</div><div class="stat-l">SAVED$</div></div>
+  </div>
+
+  <div class="footer">
+    <span class="footer-txt">DOUBAO · GEMINI · HAIKU · GPT-4o</span>
+    <span class="footer-tier" id="lastTier">—</span>
+  </div>
+
+</div>
+
+<!-- SETTINGS VIEW -->
+<div class="view" id="settingsView">
+<div class="sv">
+  <h2>⚙ SETTINGS</h2>
+
+  <div class="field">
+    <label>Comet API Key</label>
+    <input type="password" id="apiKeyInput" placeholder="sk-… (for navigation AI)"/>
+    <div class="hint">From Comet dashboard — powers Doubao → Gemini → Haiku routing</div>
+  </div>
+  <div class="field">
+    <label>OpenAI API Key</label>
+    <input type="password" id="openaiKeyInput" placeholder="sk-… (for voice + AI content)"/>
+    <div class="hint">From <code>platform.openai.com/api-keys</code> — powers voice TTS &amp; summarize/explain/translate</div>
+  </div>
+  <div class="field">
+    <label>API Endpoint</label>
+    <input type="text" id="apiEndpoint" placeholder="https://api.cometapi.com/v1/chat/completions"/>
+    <div class="hint">Comet endpoint. Must end in <code>/v1/chat/completions</code></div>
+  </div>
+  <div class="field">
+    <label>Trigger Word</label>
+    <input type="text" id="triggerWordInput" placeholder="test"/>
+    <div class="trigger-preview">Say <span class="tw" id="triggerPreview">TEST</span> then your command</div>
+  </div>
+  <div class="field">
+    <label>Stop Phrase</label>
+    <input type="text" id="stopPhraseInput" placeholder="stop listening"/>
+    <div class="hint">Say this to completely stop listening until you click mic again</div>
+  </div>
+  <div class="field">
+    <label>Confidence Threshold</label>
+    <select id="confidenceThreshold">
+      <option value="0.5">50% — Try anything</option>
+      <option value="0.65" selected>65% — Balanced</option>
+      <option value="0.8">80% — Cautious</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Speech Language</label>
+    <select id="sttLang">
+      <option value="en-US">English (US)</option>
+      <option value="en-GB">English (UK)</option>
+      <option value="en-AU">English (AU)</option>
+      <option value="es-ES">Spanish</option>
+      <option value="fr-FR">French</option>
+      <option value="de-DE">German</option>
+      <option value="ja-JP">Japanese</option>
+      <option value="zh-CN">Chinese</option>
+      <option value="pt-BR">Portuguese (BR)</option>
+      <option value="hi-IN">Hindi</option>
+      <option value="ko-KR">Korean</option>
+    </select>
+  </div>
+
+  <div class="sv-btns">
+    <button class="btn-save" id="saveSettings">SAVE SETTINGS</button>
+    <button class="btn-test" id="testConnection">TEST CONNECTION</button>
+    <div class="test-result" id="testResult"></div>
+    <button class="btn-back" id="backBtn">← BACK</button>
+  </div>
+</div>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
